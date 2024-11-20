@@ -1,0 +1,43 @@
+esphome:
+  name: retrofit-lock
+  friendly_name: Retrofit Lock
+  libraries:
+    - SPI
+    - miguelbalboa/MFRC522
+    - operatorfoundation/Crypto
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: "fN9i2YK5GxsBnjCa3gkIhWALPg+fNkHcV8C65ROXDY4="
+
+ota:
+  - platform: esphome
+    password: "fb9ef9b412e59d93d1fcc0999247df80"
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Retrofit-Lock Fallback Hotspot"
+    password: "lwYp7mpqdjXQ"
+
+captive_portal:
+    
+web_server:
+  port: 80
+
+lock:
+  - platform: retrofit_lock
+    name: Retrofit Lock
+
