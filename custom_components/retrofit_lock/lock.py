@@ -10,7 +10,7 @@ CONFIG_SCHEMA = lock.LOCK_SCHEMA.extend({
     cv.GenerateID(): cv.declare_id(RetrofitLock)
 }).extend(cv.COMPONENT_SCHEMA)
 
-def to_code(config):
+async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
-    yield cg.register_component(var, config)
-    yield lock.register_lock(var, config)
+    await cg.register_component(var, config)
+    await lock.register_lock(var, config)

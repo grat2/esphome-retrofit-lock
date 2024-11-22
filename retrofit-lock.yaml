@@ -11,6 +11,11 @@ esp32:
   framework:
     type: arduino
 
+external_components:
+  - source:
+      type: local
+      path: custom_components
+
 # Enable logging
 logger:
 
@@ -40,4 +45,23 @@ web_server:
 lock:
   - platform: retrofit_lock
     name: Retrofit Lock
+    id: retrofit_lock_1
 
+binary_sensor:
+  - platform: gpio
+    pin:
+      number: GPIO13
+      inverted: true
+      mode:
+        input: true
+        pullup: true
+    name: Retrofit Lock RFID Interrupt
+    id: retrofit_lock_binary_1
+    on_press:
+      then:
+        - lambda: |-
+            id(retrofit_lock_1)->mfrc522Int();
+        - delay: 1s
+        - lambda: |-
+            id(retrofit_lock_binary_1)->state = false;
+            id(retrofit_lock_binary_1)->publish_state(false);
