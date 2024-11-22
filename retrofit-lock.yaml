@@ -46,26 +46,50 @@ lock:
   - platform: retrofit_lock
     name: Retrofit Lock
     id: retrofit_lock_1
+    stepper_pins: [16, 17, 21, 22]  # {STEP_PIN1, STEP_PIN2, STEP_PIN3, STEP_PIN4}
+    delay_per_step: [720, 900]      # {min delay, max delay} (in us)
+    steps_per_revolution: 4096
+    turns_per_operation: 10
+    mfrc522_pins: [5, 18, 23, 19, 26]   # {CS, SCLK, MOSI, MISO, MFRC522 RST}
 
+# binary sensor that tracks the status of the MFRC522 interrupt pin to trigger 
+# card reads/writes (card access check or card initialization)
 binary_sensor:
   - platform: gpio
+    id: retrofit_lock_binary_1
+    name: Retrofit Lock RFID Interrupt
     pin:
-      number: GPIO13
+      number: GPIO13        # TCK
       inverted: true
       mode:
         input: true
         pullup: true
-    name: Retrofit Lock RFID Interrupt
-    id: retrofit_lock_binary_1
     on_press:
       then:
         - lambda: |-
-            id(retrofit_lock_1)->mfrc522Int();
-        - delay: 1s
+            id(retrofit_lock_1)->mfrc522_interrupt();
+        - delay: 1s       # prevent interrupt from being stuck on, turn it off after 1sec
         - lambda: |-
             id(retrofit_lock_binary_1)->state = false;
             id(retrofit_lock_binary_1)->publish_state(false);
+  - platform: gpio
+    id: retrofit_lock_binary_2
+    name: Retrofit Lock Physical Lock Button
+    filters:
+      - delayed_on: 20ms    # debounce the button
+    pin: 
+      number: GPIO15        # TDO
+      inverted: true
+      mode:
+        input: true
+        pullup: true
+    on_press:
+      then:
+        - lambda: |-
+            id(retrofit_lock_1)->lock();
+        - delay: 1s       # prevent button from being stuck on, turn it off after 1sec
 
+# Home Assistant button to trigger Mifare Classic 1K RFID card initialization
 button:
   - platform: template
     name: Retrofit Lock Initialize RFID Tag
@@ -73,4 +97,5 @@ button:
     on_press:
       then:
         - lambda: |-
-            id(retrofit_lock_1)->isCardInitOp = true;
+            id(retrofit_lock_1)->is_card_init_operation = true;
+
