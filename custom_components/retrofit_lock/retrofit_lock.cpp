@@ -1,6 +1,5 @@
 #include "esphome/core/log.h"
 #include "retrofit_lock.h"
-#include "retrofit_lock_secrets.h"
 
 namespace esphome {
 namespace retrofit_lock {
@@ -151,12 +150,68 @@ void RetrofitLock::initCard() {
    #ifdef DEBUG
       ESP_LOGD(TAG, "Init new card");
    #endif
+   SHA256 hash;
+   byte hashOut[32];
+   byte tempBuf[SECRET_SIZE];
+
+   // clear card initialization flag
+   this->isCardInitOp = false;
+
+   // check to make sure you have a compatible card
+   MFRC522::PICC_Type piccType = this->rfid.PICC_GetType(this->rfid.uid.sak);
+   if(piccType != MFRC522::PICC_TYPE_MIFARE_1K) {
+      ESP_LOGW(TAG, "This code specifically works on MIFARE Classic 1K cards only.");
+      return;
+   }
+
+   // initialize random data in RF data buffer and in secondary temp buffer
+   for(uint16_t i = 0; i < SECRET_SIZE; i++) {
+      this->rfBuf[i] = random(256);
+      tempBuf[i] = this->rfBuf[i];
+   }
+   
+   // write data to the card and read it back to make sure it was written correctly
+   // this->dump_byte_array(this->rfBuf, SECRET_SIZE);
+   if(!this->writeData())
+      return;
+   if(!this->readData())    // rfBuf will have been modified with the read-back data here
+      return;
+
+   // verify read back data
+   if(!this->dataEqual(this->rfBuf, tempBuf, SECRET_SIZE, SECRET_SIZE)) {
+      ESP_LOGW(TAG, "Data read back during init doesn't match data written to card!");
+      return;
+   }
+
+   // hash the data with SHA256
+   hash.reset();
+   hash.update((void *)this->rfBuf, (size_t)SECRET_SIZE);
+   hash.update((void *)SALT, sizeof(SALT));
+   hash.finalize(hashOut, 32);
+
+   // add card info to database
+   #ifdef DEBUG
+      ESP_LOGD(TAG, "Card initialized successfully! Adding to database...");
+   #endif
+   addCard(this->rfid.uid.uidByte, hashOut);
 }
 
 void RetrofitLock::addCard(byte *uid, byte *hash) {
    #ifdef DEBUG
-      ESP_LOGD(TAG, "Add new card to database");
+      ESP_LOGD(TAG, "Add new card #%d to database", this->cardsStored);
    #endif
+   if(this->cardsStored >= TOTAL_CARDS) {
+      ESP_LOGW(TAG, "Card database is full!");
+      return;
+   }
+
+   // store card info into database
+   for(uint8_t i = 0; i < 32; i++) {
+      if(i < 4)
+         this->uids[this->cardsStored][i] = uid[i];
+      this->hashes[this->cardsStored][i] = hash[i];
+   }
+   this->cardsStored++;
 }
 
 void RetrofitLock::checkCardAccess() {
@@ -167,7 +222,8 @@ void RetrofitLock::checkCardAccess() {
    byte secretHashOut[32];
    
    // read in data from RFID card
-   this->readData();
+   if(!this->readData())
+      return;
 
    // start hashing the data & salt with SHA256
    secretHash.reset();
@@ -177,13 +233,12 @@ void RetrofitLock::checkCardAccess() {
 
    // compare the fresh read data to our secrets database
    for(int card = 0; card < TOTAL_CARDS; card++) {
-      if(dataEqual((byte *)this->rfid.uid.uidByte, (byte *)SECRET_UIDS[card], 4, 4) &&
-         dataEqual(secretHashOut, (byte *)SECRET_HASHES[card], 32, 32))
-         return;
+      if(dataEqual(this->rfid.uid.uidByte, this->uids[card], 4, 4) &&
+         dataEqual(secretHashOut, this->hashes[card], 32, 32))
+         this->unlock();
    }
    
    // if we got here then the card we read doesn't match with anything in the database
-   this->unlock();
    return;
 }
 
@@ -213,7 +268,7 @@ bool RetrofitLock::checkMFRC522Error(const char *command, MFRC522::StatusCode st
    return false;
 }
 
-void RetrofitLock::readData() {
+bool RetrofitLock::readData() {
    byte buf[18];
    byte bufSize = sizeof(buf);
    MFRC522::StatusCode status;
@@ -225,26 +280,27 @@ void RetrofitLock::readData() {
       status = (MFRC522::StatusCode)this->rfid.PCD_Authenticate(MFRC522::PICC_CMD_MF_AUTH_KEY_A, 
          (sectorAddr*4) + 3, &this->mfKey, &this->rfid.uid);
       if(checkMFRC522Error("Authenticate", status))
-         return;
+         return false;
       
       // iterate through user data blocks for the current sector
       for(byte blockAddr = sectorAddr * 4; blockAddr < (sectorAddr*4) + 3; blockAddr++) {
          status = (MFRC522::StatusCode)this->rfid.MIFARE_Read(blockAddr, buf, &bufSize);
          if(checkMFRC522Error("MIFARE_Read", status))
-            return;
+            return false;
 
          // write from small buffer to main RFID buffer
          for(byte byteOffset = 0; byteOffset < 16; byteOffset++) {
             this->rfBuf[currentByte] = buf[byteOffset];
             currentByte++;
             if(currentByte >= SECRET_SIZE)
-               return;
+               return true;
          }
       }
    }
+   return true;
 }
 
-void RetrofitLock::writeData() {
+bool RetrofitLock::writeData() {
    byte buf[18];
    MFRC522::StatusCode status;
    uint16_t currentByte = 0;
@@ -255,7 +311,7 @@ void RetrofitLock::writeData() {
       status = (MFRC522::StatusCode)this->rfid.PCD_Authenticate(MFRC522::PICC_CMD_MF_AUTH_KEY_A, 
          (sectorAddr*4) + 3, &this->mfKey, &this->rfid.uid);
       if(checkMFRC522Error("Authenticate", status))
-         return;
+         return false;
       
       // iterate through user data blocks for the current sector
       for(byte blockAddr = sectorAddr * 4; blockAddr < (sectorAddr*4) + 3; blockAddr++) {
@@ -269,14 +325,15 @@ void RetrofitLock::writeData() {
 
          status = (MFRC522::StatusCode)this->rfid.MIFARE_Write(blockAddr, buf, 16);
          if(checkMFRC522Error("MIFARE_Write", status))
-            return;
+            return false;
 
          // increment currentByte counter by block size and check if we're done writing
          currentByte += 16;
          if(currentByte >= SECRET_SIZE)
-            return;
+            return true;
       }
    }
+   return true;
 }
 
 void RetrofitLock::activateReception() {

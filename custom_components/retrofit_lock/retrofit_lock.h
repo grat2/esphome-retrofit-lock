@@ -21,6 +21,7 @@ class RetrofitLock : public lock::Lock, public Component, public api::CustomAPID
       void dump_config() override;
       void dump_byte_array(byte *data, uint32_t size);      // used for debugging only
       void mfrc522Int();            // main interrupt handler
+      bool isCardInitOp = false;    // flag set by an external button to initialize RFID cards
 
    protected:
       // Elegoo stepper motor properties
@@ -29,19 +30,19 @@ class RetrofitLock : public lock::Lock, public Component, public api::CustomAPID
       void motorInit(bool isUnlock);      // setup motor parameters
       uint32_t totalSteps[2];       // step number queue
       int8_t direction[2];          // direction value queue
-      bool motorBusy;               // flag to make sure motor is free for operations
-      uint8_t currentStep;          // step sequence number from 0-7, 8 = disengage motor
+      bool motorBusy = false;       // flag to make sure motor is free for operations
+      uint8_t currentStep = 0;      // step sequence number from 0-7, 8 = disengage motor
       uint32_t stepDelayMicrosec;         // variable step delay
 
       // MFRC522 RFID properties/functions
       MFRC522 rfid;
       MFRC522::MIFARE_Key mfKey;
-      bool isCardInitOp = false;
       byte uids[TOTAL_CARDS][4];       // UID values from Mifare 1K tags
       byte hashes[TOTAL_CARDS][32];    // SHA256 hashes from secrets stored on RFID tags
+      uint8_t cardsStored = 0;         // number of cards already stored in database
       byte rfBuf[SECRET_SIZE];
-      void readData();              // will write to rfBuf
-      void writeData();             // requires data to write to be stored in rfBuf
+      bool readData();              // will write to rfBuf
+      bool writeData();             // requires data to write to be stored in rfBuf
       void addCard(byte *uid, byte *hash);         // save UID and SHA256 hash to database of active RFID tags
       void activateReception();                    // commands for MFRC522 to activate reception
       void initCard();                 // write data to a card and call addCard()

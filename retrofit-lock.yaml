@@ -65,3 +65,12 @@ binary_sensor:
         - lambda: |-
             id(retrofit_lock_binary_1)->state = false;
             id(retrofit_lock_binary_1)->publish_state(false);
+
+button:
+  - platform: template
+    name: Retrofit Lock Initialize RFID Tag
+    id: retrofit_lock_button_1
+    on_press:
+      then:
+        - lambda: |-
+            id(retrofit_lock_1)->isCardInitOp = true;
