@@ -47,7 +47,7 @@ lock:
     name: Retrofit Lock
     id: retrofit_lock_1
     stepper_pins: [16, 17, 21, 22]  # {STEP_PIN1, STEP_PIN2, STEP_PIN3, STEP_PIN4}
-    delay_per_step: [720, 900]      # {min delay, max delay} (in us)
+    delay_per_step: [780, 900]      # {min delay, max delay} (in us)
     steps_per_revolution: 4096
     turns_per_operation: 10
     mfrc522_pins: [5, 18, 23, 19, 26]   # {CS, SCLK, MOSI, MISO, MFRC522 RST}

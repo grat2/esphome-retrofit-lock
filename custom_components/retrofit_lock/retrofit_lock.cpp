@@ -157,9 +157,6 @@ void RetrofitLock::init_card() {
    byte hashOut[32];
    byte tempBuf[SECRET_SIZE];
 
-   // clear card initialization flag
-   this->is_card_init_operation = false;
-
    // check to make sure you have a compatible card
    MFRC522::PICC_Type piccType = this->rfid_.PICC_GetType(this->rfid_.uid.sak);
    if(piccType != MFRC522::PICC_TYPE_MIFARE_1K) {
@@ -197,6 +194,9 @@ void RetrofitLock::init_card() {
       ESP_LOGD(TAG, "Card initialized successfully! Adding to database...");
    #endif
    add_card(this->rfid_.uid.uidByte, hashOut);
+
+   // clear card initialization flag
+   this->is_card_init_operation = false;
 }
 
 void RetrofitLock::add_card(byte *uid, byte *hash) {
